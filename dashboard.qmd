@@ -1,0 +1,349 @@
+---
+title: "dashboard"
+author: ""
+format: dashboard
+server: shiny
+theme:
+  - lumen
+  - my_theme.scss
+---
+
+```{r}
+#| context: setup
+#| 
+library(tidyverse)
+library(quarto)
+library(gt)
+library(gtExtras)
+library(shinyWidgets) # radioGroupButtons
+library(ggplot2)
+library(flexdashboard)
+library(scales)
+library(directlabels)
+
+load("RiRe.Rdata", envir = .GlobalEnv)
+
+```
+
+
+##  {.sidebar width="150px"}
+
+```{r}
+
+# datum_keuzes <-
+#   dates |>
+#   mutate(month = month(date)) |>
+#   filter(month == 12 |
+#            date %in% c(start_date_sector_indices, start_date_vp_vf, start_date_fd, start_date_vd, lastdate, snapshot_date)) |>
+#   filter(date >= start_date_sector_indices)
+# 
+# selectInput(
+#   inputId = "start_datum",
+#   label = "van",
+#   choices = datum_keuzes$date,
+#   selected = lastdate)
+# 
+# selectInput(
+#   inputId = "datum",
+#   label = "t/m",
+#   choices = datum_keuzes$date,
+#   selected = snapshot_date)
+
+selectInput(inputId = "periode",
+                  label = "periode",
+                  choices = c("dit jaar" = "ytd", 
+                              "deze maand" = "mtd", 
+                              "dit kwartaal" = "qtd", 
+                              "vorige maand" = "lm", 
+                              "vorig kwartaal" = "lq", 
+                              "vorig jaar" = "vj", 
+                              "het jaar daarvoor" = "vj2",
+                              "het jaar daarvoor" = "vj3",
+                              "vanaf start VD" = "sep-22",
+                              "vanaf start DZ" = "aug-18",
+                              "vanaf start VP" = "jun-17",
+                              "vanaf start RD50 etc." = "dec-13"),
+                  selected = "ytd")
+
+```
+
+
+```{r}
+#| context: server
+
+periode_keuze <- reactive({
+  input$periode
+})
+
+start_date <- reactive({
+  case_when(periode_keuze() == "ytd" ~ last_ultimo_year,
+            periode_keuze() == "mtd" ~ lastdate,
+            periode_keuze() == "qtd" ~ last_quarter_end,
+            periode_keuze() == "lm" ~ next_to_lastdate,
+            periode_keuze() == "lq" ~ last_quarter_start,
+            periode_keuze() == "vj" ~ next_to_last_ultimo_year,
+            periode_keuze() == "vj2" ~ next_to_last_ultimo_year2,
+            periode_keuze() == "vj3" ~ next_to_last_ultimo_year3,
+            periode_keuze() == "sep-22" ~ start_date_vd,
+            periode_keuze() == "aug-18" ~ start_date_fd,
+            periode_keuze() == "jun-17" ~ start_date_vp_vf,
+            periode_keuze() == "dec-13" ~ start_date_sector_indices)
+})
+end_date <- reactive({
+    case_when(periode_keuze() == "lm" ~ lastdate,
+              periode_keuze() == "lq" ~ last_quarter_end,
+              periode_keuze() == "vj" ~ last_ultimo_year,
+              periode_keuze() == "vj2" ~ next_to_last_ultimo_year,
+              periode_keuze() == "vj3" ~ next_to_last_ultimo_year2,
+              TRUE ~ snapshot_date)
+})
+
+```
+
+# Markten
+
+```{r}
+#| context: server
+
+theme_dashboard <- list(
+  theme(strip.text = element_text(size = 12), 
+        axis.text = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        plot.title = element_text(size = 16))
+)
+
+output$pfs_bms_barplot <- renderPlot({
+       perf_bar_chart(chart_data = pfs_bms_chart_data, 
+                       titel_tekst = "Modelportefeuilles en benchmarks", 
+                       start_date = start_date(), end_date = end_date()) + 
+       geom_vline(xintercept = c(1.5, 3.5, 8.5, 10.5), linetype = "dotdash", alpha = 0.7) +
+       annotate("text", x = (1.5+3.5)/2, y = MSDEWIN_perf(start_date = start_date(), end_date = end_date()) + .01, label = "RD30RM70") +
+       annotate("text", x = (3.5+8.5)/2, y = MSDEWIN_perf(start_date = start_date(), end_date = end_date()) + .01, label = "RD50RM50") +
+       annotate("text", x = (8.5+10.5)/2, y = MSDEWIN_perf(start_date = start_date(), end_date = end_date()) + .01, label = "RD70RM30") +
+       annotate("text", x = (10.5+13.5)/2, y = MSDEWIN_perf(start_date = start_date(), end_date = end_date()) + .01, label = "RD100") +
+    theme_dashboard
+})
+
+output$sectors_styles_barplot <- renderPlot({
+    perf_bar_chart(chart_data = sector_en_styles_chart_data_incl, 
+                   titel_tekst = "MSCI World sectoren en stijlen, in EUR, incl. div.", 
+                   start_date = start_date(), end_date = end_date()) +
+    geom_vline(xintercept = c(11.5), linetype = "dotdash", alpha = 0.7) +
+    theme_dashboard
+})
+
+output$landen_barplot <- renderPlot({
+    perf_bar_chart(chart_data = landen_chart_data, 
+                   titel_tekst = "MSCI landen/regio's, in EUR, incl. div.", 
+                   start_date = start_date(), end_date = end_date()) +
+    theme_dashboard
+})
+
+output$other_barplot <- renderPlot({
+    perf_bar_chart(chart_data = other_currency_chart_data, 
+                   titel_tekst = "Other, in EUR, incl. div.", 
+                   start_date = start_date(), end_date = end_date()) + 
+    geom_vline(xintercept = c(9.5), linetype = "dotdash", alpha = 0.7) +
+    theme_dashboard
+})
+
+
+```
+
+## Row
+
+###
+
+```{r}
+plotOutput('pfs_bms_barplot')
+```
+
+###
+
+```{r}
+plotOutput('sectors_styles_barplot')
+```
+
+## Row
+
+###
+
+```{r}
+plotOutput('landen_barplot')
+```
+
+###
+
+```{r}
+plotOutput('other_barplot')
+```
+
+# Attributie
+
+```{r}
+#| context: server
+
+output$attributie_tabel_RDRM <- render_gt({
+  attr_tabel_RDRM_simple_summaries_nice(start_date = start_date(), end_date = end_date(), portfolios = portfolio_levels) |> 
+    tab_options(table.font.size = 12)
+})
+
+output$attributie_grafiek_RDRM <- renderPlot({
+   chart_attr_effecten_RDRM(start_date = start_date(), end_date = end_date()) +
+    theme(strip.text = element_text(size = 12), 
+          axis.text = element_text(size = 12),
+          legend.text = element_text(size = 12),
+          plot.title = element_text(size = 16))
+})
+```
+
+## Row {.tabset}
+
+### RDRM
+
+#### Row
+
+```{r}
+#| height: 55%
+tableOutput('attributie_tabel_RDRM')
+```
+
+<!-- ::: {.card title="My Title" height="10%"} -->
+<!-- This text will be displayed within a card -->
+<!-- ::: -->
+
+```{r}
+#| height: 45%
+plotOutput('attributie_grafiek_RDRM')
+```
+
+```{r}
+#| context: server
+
+output$attributie_tabel_RD_VD50 <- render_gt({
+  attr_tabel_sector_summary_nice(pf = "vd", start_date = start_date(), end_date = end_date()) |> 
+    tab_options(table.font.size = 12)
+})
+
+output$attributie_tabel_RD_VP50 <- render_gt({
+  attr_tabel_sector_summary_nice(pf = "vf", start_date = start_date(), end_date = end_date()) |> 
+    tab_options(table.font.size = 12)
+})
+
+output$attributie_tabel_RD_VP100 <- render_gt({
+  attr_tabel_sector_summary_nice(pf = "vp", start_date = start_date(), end_date = end_date()) |> 
+    tab_options(table.font.size = 12)
+})
+output$attributie_grafiek_RD <- renderPlot({
+  chart_RD_attr_vp_vf(start_date = start_date(), end_date = end_date()) +
+    theme(strip.text = element_text(size = 12), 
+          axis.text = element_text(size = 12),
+          legend.text = element_text(size = 12),
+          plot.title = element_text(size = 16))
+})
+```
+
+### RD 
+
+#### Row
+
+##### Row {.tabset}
+
+```{r}
+#| height: 65%
+#| title: "VP50"
+tableOutput('attributie_tabel_RD_VP50')
+```
+
+```{r}
+#| height: 65%
+#| title: "VD50"
+tableOutput('attributie_tabel_RD_VD50')
+```
+
+```{r}
+#| height: 65%
+#| title: "VP100"
+tableOutput('attributie_tabel_RD_VP100')
+```
+
+##### Row {height=35%}
+
+```{r}
+plotOutput('attributie_grafiek_RD')
+```
+
+
+# Portefeuilles
+
+## Row {.tabset}
+
+```{r}
+#| title: RD50
+portfolio_gt(pf = pf_levels[1], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: DZ50
+portfolio_gt(pf = pf_levels[2], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: VP50
+portfolio_gt(pf = pf_levels[3], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: VD50
+portfolio_gt(pf = pf_levels[4], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: RD30
+portfolio_gt(pf = pf_levels[5], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: RD70
+portfolio_gt(pf = pf_levels[6], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: RD100
+portfolio_gt(pf = pf_levels[7], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: VP100
+portfolio_gt(pf = pf_levels[8], as_of_date = snapshot_date) |> 
+    tab_options(table.font.size = 14)
+```
+
+# Sectoren en Regio's
+
+```{r}
+#| title: Sectoren
+#| height: 60%
+nice_country_etc_table(item = "sector", RDRM = "RD") |> 
+    tab_options(table.font.size = 14)
+```
+
+```{r}
+#| title: Regio's
+#| height: 40%
+nice_country_etc_table(item = "region", RDRM = "RD") |> 
+    tab_options(table.font.size = 14)
+```
+
+# Return
+
+```{r}
+
+```
